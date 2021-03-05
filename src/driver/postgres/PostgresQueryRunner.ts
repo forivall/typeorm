@@ -1427,7 +1427,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
             SELECT columns.*,
               pg_catalog.col_description(('"' || table_catalog || '"."' || table_schema || '"."' || table_name || '"')::regclass::oid, ordinal_position) AS description,
               ('"' || "udt_schema" || '"."' || "udt_name" || '"')::"regtype" AS "regtype",
-              pg_catalog.format_type("col_attr"."atttypid", "col_attr"."atttypmod") AS "format_type"
+              pg_catalog.format_type("col_attr"."atttypid", "col_attr"."atttypmod") AS "format_type",
+              "col_enum"."enum_items"
               FROM "information_schema"."columns"
               LEFT JOIN "pg_catalog"."pg_attribute" AS "col_attr"
               ON "col_attr"."attname" = "columns"."column_name"
@@ -1439,6 +1440,9 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
                 WHERE "cls"."relname" = "columns"."table_name"
                 AND "ns"."nspname" = "columns"."table_schema"
               )
+              LEFT JOIN (
+                SELECT "pg_enum".enumtypid, string_agg("pg_enum"."enumlabel", ',' ORDER BY "pg_enum"."enumsortorder") as enum_items from "pg_catalog"."pg_enum" group by "pg_enum"."enumtypid"
+              ) as "col_enum" on "col_enum"."enumtypid" = "col_attr"."atttypid"
             WHERE
             ` + tablesCondition;
 
@@ -1571,9 +1575,12 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
                         const sql = `SELECT "e"."enumlabel" AS "value" FROM "pg_enum" "e" ` +
                         `INNER JOIN "pg_type" "t" ON "t"."oid" = "e"."enumtypid" ` +
                         `INNER JOIN "pg_namespace" "n" ON "n"."oid" = "t"."typnamespace" ` +
-                        `WHERE "n"."nspname" = '${dbTable["table_schema"]}' AND "t"."typname" = '${this.buildEnumName(table, tableColumn.name, false, true)}'`;
+                        `WHERE "n"."nspname" = '${dbTable["table_schema"]}' AND LOWER("t"."typname") = LOWER('${this.buildEnumName(table, tableColumn.name, false, true)}')`;
                         const results: ObjectLiteral[] = await this.query(sql);
                         tableColumn.enum = results.map(result => result["value"]);
+                    } else if (dbColumn["enum_items"]) {
+                        tableColumn.type = "enum";
+                        tableColumn.enum = dbColumn["enum_items"].split(",");
                     }
 
                     if (tableColumn.type === "geometry") {
@@ -1929,7 +1936,7 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
         const enumName = this.buildEnumName(table, column, false, true);
         const sql = `SELECT "n"."nspname", "t"."typname" FROM "pg_type" "t" ` +
             `INNER JOIN "pg_namespace" "n" ON "n"."oid" = "t"."typnamespace" ` +
-            `WHERE "n"."nspname" = ${schema} AND "t"."typname" = '${enumName}'`;
+            `WHERE "n"."nspname" = ${schema} AND LOWER("t"."typname") = LOWER('${enumName}')`;
         const result = await this.query(sql);
         return result.length ? true : false;
     }

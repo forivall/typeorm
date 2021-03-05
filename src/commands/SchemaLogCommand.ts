@@ -25,6 +25,11 @@ export class SchemaLogCommand implements yargs.CommandModule {
                 alias: "config",
                 default: "ormconfig",
                 describe: "Name of the file with connection configuration."
+            })
+            .option("r", {
+                alias: "reverse",
+                boolean: true,
+                describe: "Also print the queries that would be reversed"
             });
     }
 
@@ -61,6 +66,19 @@ export class SchemaLogCommand implements yargs.CommandModule {
                     sqlString = sqlString.substr(-1) === ";" ? sqlString : sqlString + ";";
                     console.log(highlight(sqlString));
                 });
+                if (args.reverse) {
+                    const lengthSeparators = String(sqlInMemory.downQueries.length).split("").map(char => "-").join("");
+                    console.log(chalk.yellow("----------------------------------------------------------------" + lengthSeparators));
+                    console.log(chalk.yellow.bold(`-- Current schema has diverged via the following sql queries (${chalk.white(sqlInMemory.downQueries.length.toString())}):`));
+                    console.log(chalk.yellow("----------------------------------------------------------------" + lengthSeparators));
+
+                    sqlInMemory.downQueries.forEach(upQuery => {
+                        let sqlString = upQuery.query;
+                        sqlString = sqlString.trim();
+                        sqlString = sqlString.substr(-1) === ";" ? sqlString : sqlString + ";";
+                        console.log(highlight(sqlString));
+                    });
+                }
             }
             await connection.close();
 

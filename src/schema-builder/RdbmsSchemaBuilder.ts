@@ -563,8 +563,16 @@ export class RdbmsSchemaBuilder implements SchemaBuilder {
                 continue;
 
             const newIndices = metadata.indices
-                .filter(indexMetadata => !table.indices.find(tableIndex => tableIndex.name === indexMetadata.name) && indexMetadata.synchronize === true)
-                .map(indexMetadata => TableIndex.create(indexMetadata));
+                .filter(
+                    (indexMetadata) =>
+                        !( table.indices.find( (tableIndex) => tableIndex.name === indexMetadata.name ) ||
+                            !indexMetadata.where && table.foreignKeys.find( (fk) => {
+                                return fk.name === indexMetadata.name;
+
+                             } )
+                        ) && indexMetadata.synchronize === true
+                )
+                .map((indexMetadata) => TableIndex.create(indexMetadata));
 
             if (newIndices.length === 0)
                 continue;
